@@ -1,0 +1,17 @@
+# Tooling only — never installed in the prod image (see Dockerfile).
+#
+# The linter versions here must stay identical to the `rev` of the matching hook
+# in .pre-commit-config.yaml. If they drift, the local hooks and the CI lint job
+# disagree and the CI turns into noise nobody reads (CLAUDE.md §6).
+pytest==9.0.2
+pre-commit==4.6.2
+black==26.5.1
+isort==8.0.1
+pycln==2.6.0
+pyrefly==1.2.0
+coverage==7.15.4
+# Transport behind starlette's TestClient. httpx2 and not httpx: starlette
+# deprecated the httpx backend and warns on every import. Test-only for now —
+# the app itself does not talk HTTP until the X client (ticket 4), which will
+# add it to requirements.txt as a production dependency.
+httpx2==2.12.0

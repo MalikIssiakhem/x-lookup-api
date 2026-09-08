@@ -1,0 +1,28 @@
+# The `rev` of every hook must match the pin in requirements-dev.txt, and the CI
+# lint job replays this exact file (`pre-commit run --all-files`). A hook is only
+# ever added to both at once — a local-only hook is bypassed by --no-verify, a
+# CI-only hook fails on code that passed locally (CLAUDE.md §6).
+repos:
+-   repo: https://github.com/psf/black
+    rev: 26.5.1
+    hooks:
+    -   id: black
+        args: [--config=pyproject.toml]
+-   repo: https://github.com/hadialqattan/pycln
+    rev: v2.6.0
+    hooks:
+    -   id: pycln
+        language_version: python3.13
+        args: [--config=pyproject.toml]
+-   repo: https://github.com/pycqa/isort
+    rev: 8.0.1
+    hooks:
+    -   id: isort
+        args: [--settings-path=pyproject.toml]
+-   repo: https://github.com/facebook/pyrefly-pre-commit
+    rev: 1.2.0
+    hooks:
+    -   id: pyrefly-check
+        stages: [pre-commit]
+        language: system
+        pass_filenames: true
