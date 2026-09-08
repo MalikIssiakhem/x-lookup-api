@@ -265,8 +265,8 @@ Un ticket = une MR. Chaque ticket livre un consommateur réel de ce qu'il ajoute
 | # | Ticket | Livre |
 |---|---|---|
 | 1 | Blueprint | Ce fichier |
-| 2 | Socle bootable | `config.py`, `main.py` + lifespan, handlers d'exceptions, `/health`, Dockerfile multi-stage, CI lint/test |
-| 3 | Datastores + pool | `db/`, ping fail-fast en parallèle, repository de sessions, pool en mémoire, refresh en tâche de fond |
+| 2 | Socle bootable | `config.py`, `main.py`, handlers d'exceptions, `/health`, Dockerfile multi-stage, CI lint/test/build |
+| 3 | Datastores + pool | `db/`, **lifespan** avec ping fail-fast en parallèle, repository de sessions, pool en mémoire, refresh en tâche de fond |
 | 4 | Client X + endpoint #1 | `clients/x/`, TID, comptabilité de rate-limit, parseur utilisateur tolérant, route #1 de bout en bout, fixtures des deux formes |
 | 5 | Endpoint #2 | Additif : query id + builder de variables, parseur réutilisé |
 | 6 | Endpoint #3 | Route de résolution + cache à TTL long |
@@ -278,6 +278,10 @@ Un ticket = une MR. Chaque ticket livre un consommateur réel de ce qu'il ajoute
 L'ordre n'est pas négociable sur un point : le **client X et son premier consommateur
 arrivent ensemble** (ticket 4). Une couche d'accès à X sans route qui l'appelle est du
 code non testé en conditions réelles.
+
+Le `lifespan` arrive au ticket 3 et non au 2 : ses pings de démarrage sont sa seule
+raison d'être, et un `asynccontextmanager` qui ne fait que `yield` est de la plomberie
+sans consommateur.
 
 ---
 

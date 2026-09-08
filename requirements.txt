@@ -1,0 +1,13 @@
+# Production dependencies only, pinned exactly. Dev/test tooling lives in
+# requirements-dev.txt and is never installed in the prod image (see Dockerfile).
+#
+# Public PyPI only: this project must not pull anything from a private index.
+# Install with:
+#   pip install --isolated --index-url https://pypi.org/simple -r requirements.txt
+fastapi==0.141.1
+# ASGI server. The [standard] extra brings uvloop/httptools — the app is fully
+# async and spends its time waiting on X, so the faster event loop is the point.
+uvicorn[standard]==0.52.4
+pydantic==2.13.5
+# Reads and validates the configuration (app/config.py).
+pydantic-settings==2.15.0

@@ -1,0 +1,30 @@
+# Keep the build context (and therefore the image) minimal. Tests and dev-only
+# files must never reach the image.
+test/
+docs/
+.git/
+.gitattributes
+.gitignore
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+.claude/
+.pre-commit-config.yaml
+requirements-dev.txt
+CLAUDE.md
+
+# CI (never in the image)
+.github/
+
+# Compose (dev) — never in the image
+docker-compose*.yml

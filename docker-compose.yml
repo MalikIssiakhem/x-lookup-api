@@ -1,0 +1,41 @@
+# Local development stack. Builds the same multi-stage Dockerfile the CI builds,
+# so what runs here is what would ship — no separate dev image to drift from it.
+#
+# Usage:
+#   docker compose up --build
+#   -> Swagger on http://localhost:8123/docs
+#
+# No mongo/redis service yet: nothing in the app connects to them (they arrive
+# with ticket 3, and they get their services here in the same MR).
+services:
+  api:
+    image: x-lookup-api:latest
+    container_name: x-lookup-api
+    build:
+      context: ./
+    restart: unless-stopped
+    # Optional: every setting has a default today, so the API boots without a
+    # .env. It becomes required in practice at ticket 3, when the datastore URLs
+    # land with no default and the boot fails fast without them.
+    env_file:
+      - path: .env
+        required: false
+    # Deliberately not 8080: that is Burp's default proxy port, and a WSL relay
+    # already shares it on some dev machines. An unremarkable port here means
+    # `compose up` never races the tooling.
+    ports:
+      - "8123:80"
+    # Consumes /health for what it is meant for: liveness. No curl in
+    # python:3.13-slim, so the check runs through the venv's own interpreter.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:80/health').read()",
+        ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
