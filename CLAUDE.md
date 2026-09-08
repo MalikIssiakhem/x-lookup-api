@@ -187,15 +187,17 @@ app/
   anonymisées couvrant **les deux formes** de réponse. C'est le seul garde-fou contre une
   régression silencieuse le jour où X change de schéma.
 - **Outils** : black (line-length 88), isort, pycln, pyrefly, enchaînés par **pre-commit**.
-  Couverture via `coverage` → `coverage.xml`, lu par **SonarCloud**.
-- **Pas de job CI de lint** : la qualité est tenue par pre-commit (local) + **SonarCloud**
-  (gate CI). Règles Sonar à connaître : **S5778** (un seul appel pouvant lever par bloc
-  `pytest.raises` — sortir la construction du payload du `with`), **S5713** (pas d'exception
-  redondante dans un `except` — une sous-classe déjà couverte par sa base), **S1172**
-  paramètre inutilisé (`# NOSONAR` quand il est volontairement déclaré, ex. dans les
-  overrides de test).
-- Factories de données partagées dans `test/helpers.py` pour éviter le code dupliqué que
-  Sonar signale.
+  Couverture via `coverage`, avec un `fail_under` dans `pyproject.toml`.
+- **Le lint tourne en CI**, en rejouant exactement les hooks : `pre-commit run --all-files`
+  en mode `--show-diff-on-failure`. Il n'y a **pas** de gate qualité externe sur ce repo :
+  pre-commit local se contourne avec un `--no-verify`, donc la CI est le seul filet réel.
+  Corollaire : **un hook n'est ajouté qu'en local et en CI en même temps** — sinon les deux
+  divergent et la CI devient du bruit qu'on finit par ignorer.
+- **Le seuil de couverture est la gate**, pas un indicateur : `coverage report --fail-under`
+  fait échouer le job. On monte le seuil quand la couverture monte, on ne le baisse **jamais**
+  pour faire passer une MR — c'est le seul garde-fou automatique qui reste.
+- Factories de données partagées dans `test/helpers.py` : les payloads X sont volumineux et
+  les recopier dans chaque test rend une évolution de schéma impossible à répercuter.
 - Noms de tests en phrases complètes :
   `test_lifespan_refuses_to_boot_when_the_session_pool_is_empty`.
 
@@ -210,8 +212,9 @@ app/
 - Deux fichiers de dépendances : `requirements.txt` (prod, **pins exacts**, une ligne de
   commentaire justifiant chaque dépendance non évidente) et `requirements-dev.txt`
   (outillage, jamais installé dans l'image).
-- **GitHub Actions**, pipeline `test → sonar → build`. Le déploiement reste manuel tant que
-  la cible d'hébergement n'est pas figée.
+- **GitHub Actions**, pipeline `lint → test → build`. `lint` et `test` tournent sur chaque PR,
+  `build` uniquement sur `main`. Le déploiement reste manuel tant que la cible d'hébergement
+  n'est pas figée.
 - **Un seul process API** (pas de `--workers`) tant que le pool de sessions est en mémoire :
   N workers = N pools divergents et une comptabilité de rate-limit fausse, donc des comptes
   bannis. Scaler horizontalement suppose **d'abord** de déporter l'état du pool dans Redis —
