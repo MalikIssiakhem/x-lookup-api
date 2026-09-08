@@ -6,7 +6,6 @@ reprise de **Nitter**. L'archi ne doit rien coder en dur qui suppose un seul typ
 (user / post / list) ni une seule stratégie d'authentification vers X.
 
 - **Blueprint complet & endpoints cibles : `docs/PROJECT.md` — à lire avant toute feature.**
-  *(à créer au ticket suivant — tant qu'il n'existe pas, ce fichier fait foi.)*
 - Référence d'implémentation de la couche X : le **clone local de Nitter**
   (`src/consts.nim`, `apiutils.nim`, `auth.nim`, `tid.nim`, `api.nim`, `parser.nim`).
 - Modèle de bonnes pratiques imposé : le **repo de back-office de référence** (archi en
