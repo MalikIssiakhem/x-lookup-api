@@ -1,0 +1,26 @@
+# Secrets & config locale — jamais versionnés (CLAUDE.md §5)
+.env
+.env.*
+!.env.example
+
+# Références locales vers des repos tiers / professionnels (CLAUDE.md §0)
+.claude/local-refs.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Tests & couverture
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Outils & IDE
+.idea/
+.vscode/
+.mypy_cache/
+.ruff_cache/
