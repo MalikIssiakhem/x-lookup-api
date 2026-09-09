@@ -73,7 +73,7 @@ de ce tableau.
 | Route | Query id X | Variables | TID | fieldToggles |
 |---|---|---|---|---|
 | #1, #3 (session cookie) | `IGgvgiOx4QZndDHuD3x9TQ/UserByScreenName` | `screen_name`, `withGrokTranslatedBio` | **oui** | `withArticleRichContentState`, `withArticlePlainText`, `withGrokAnalyze`, `withDisallowedReplyControls` |
-| #1, #3 (session OAuth) | `-ZzAG_Bckx16LMbEvHC3lg/UserResultByScreenNameQuery` | `screen_name` | **oui** | — |
+| #1, #3 (session OAuth — *pas approvisionné aujourd'hui*) | `-ZzAG_Bckx16LMbEvHC3lg/UserResultByScreenNameQuery` | `screen_name` | **oui** | — |
 | #2 | `-DAaa9jPxPswYeI2fZ9rug/UserResultByIdQuery` | `rest_id` | **oui** | — |
 | #4, #5 | `LE3eTyeqhBh2g-fX85O2eQ/UserWithProfileTweetsQueryV2` | `rest_id`, `cursor`, `count` | **oui** | `withArticleRichContentState`, `withArticlePlainText` |
 | #6, #7 | `AcYHjc_YAx-9_rKWdMsKvA/UserWithProfileTweetsAndRepliesQueryV2` | `rest_id`, `cursor`, `count` | **non** | `withArticleRichContentState`, `withArticlePlainText` |
@@ -92,6 +92,8 @@ Chaque requête porte en plus le blob `features` (constante partagée) en query 
    `UserByScreenName` et une session OAuth vise `UserResultByScreenNameQuery`. Le client
    ne peut donc pas construire l'URL avant d'avoir pioché une session dans le pool :
    **sélection de session puis résolution d'endpoint**, dans cet ordre.
+   *Tous les comptes approvisionnés à ce jour sont de type cookie* — la variante OAuth
+   est documentée mais pas implémentée, faute de session à lui donner.
 3. **Aucune variable construite par concaténation.** `cursor`, `screen_name` et
    `rest_id` viennent du client final. Sérialisation JSON systématique
    (`json.dumps(..., separators=(",", ":"))`). C'est une classe d'injection réelle,
@@ -123,6 +125,28 @@ Racine des instructions de timeline, dans l'ordre :
 Un champ absent des deux formes est `None` dans le modèle de sortie, jamais une
 exception : X retire un champ « toujours présent » sans préavis, et ça ne doit pas
 transformer un lookup en 502.
+
+---
+
+### Format des comptes approvisionnés
+
+Les comptes arrivent en lignes `:`-séparées, dans cet ordre :
+
+```
+username:password:email:email_password:totp_secret:ct0:auth_token
+```
+
+Repères pour ne pas inverser les deux derniers : `auth_token` fait **40 caractères hex**,
+`ct0` est nettement plus long (~160). Le premier champ est le **username**, pas l'id
+numérique du compte — celui-ci n'est pas fourni, et l'API n'en a pas besoin : le pool est
+indexé sur le username.
+
+Seuls `username`, `ct0` et `auth_token` sont chargés par l'API. `password`, `email`,
+`email_password` et `totp_secret` restent dans le document Mongo pour l'outil qui
+**re-fabrique** une session expirée (flow `1.1/onboarding/task.json`), et sont exclus par
+la projection du repository : ce que le processus ne charge jamais ne peut pas fuiter.
+
+Le parsing de ce format appartient à l'outil d'alimentation du pool, pas à cette API.
 
 ---
 

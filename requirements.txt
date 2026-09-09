@@ -11,3 +11,6 @@ uvicorn[standard]==0.52.4
 pydantic==2.13.5
 # Reads and validates the configuration (app/config.py).
 pydantic-settings==2.15.0
+# MongoDB driver — Mongo is the source of truth for the X account sessions.
+# AsyncMongoClient (pymongo's own async API), not motor, which is deprecated.
+pymongo==4.18.0
