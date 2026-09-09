@@ -95,3 +95,78 @@ async def test_a_corrupted_session_document_is_logged_without_its_credentials(
     # it (CLAUDE.md §4).
     assert "leaky-ct0" not in caplog.text
     assert "leaky-ct0" not in str(raised.value)
+
+
+async def test_the_repository_only_asks_mongo_for_cookie_sessions() -> None:
+    collection = FakeCollection()
+
+    await build_repository(collection).list_usable_sessions()
+
+    # The cheapest guard against the most likely corruption: an account of a
+    # kind this reader cannot parse never reaches the validation at all.
+    assert collection.received_query["kind"] == "cookie"
+
+
+async def test_the_requested_kind_is_one_the_model_accepts() -> None:
+    collection = FakeCollection()
+    await build_repository(collection).list_usable_sessions()
+    requested_kind = collection.received_query["kind"]
+
+    # Drift guard: the day the model learns a second kind, asking Mongo for a
+    # value it no longer accepts would silently return an empty pool.
+    document = build_session_document()
+    document["kind"] = requested_kind
+
+    assert XSessionInDB(**document).kind == requested_kind  # type: ignore[bad-argument-type]
+
+
+async def test_a_single_invalid_document_does_not_discard_the_valid_ones() -> None:
+    broken = build_session_document(username="broken")
+    del broken["auth_token"]
+    collection = FakeCollection(
+        [
+            build_session_document(username="first"),
+            broken,
+            build_session_document(username="third"),
+        ]
+    )
+
+    sessions = await build_repository(collection).list_usable_sessions()
+
+    # One rotten row must not take the other 2999 accounts down with it — and
+    # it would come back on every single read, so this would be permanent.
+    assert [session.username for session in sessions] == ["first", "third"]
+
+
+async def test_skipping_an_invalid_document_is_logged_with_the_counts(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    broken = build_session_document(username="broken")
+    del broken["auth_token"]
+    collection = FakeCollection([build_session_document(), broken])
+
+    with caplog.at_level("ERROR"):
+        await build_repository(collection).list_usable_sessions()
+
+    # Tolerance is silent by nature; this line is the only thing standing
+    # between a pool shrinking to nothing and nobody noticing.
+    assert "Skipped 1 invalid X session(s) out of 2" in caplog.text
+
+
+async def test_every_document_being_invalid_is_a_data_corruption_error() -> None:
+    broken = build_session_document()
+    del broken["auth_token"]
+    collection = FakeCollection([broken, dict(broken)])
+
+    # Nothing validating means the model no longer matches the schema. That has
+    # to be loud, not reported as "no session available".
+    with pytest.raises(RepositoryDataCorruptionError):
+        await build_repository(collection).list_usable_sessions()
+
+
+async def test_an_empty_collection_is_not_a_corruption_error() -> None:
+    sessions = await build_repository(FakeCollection([])).list_usable_sessions()
+
+    # No document at all is a legitimate state (a brand new deployment); the
+    # lifespan is what turns it into a refused boot.
+    assert sessions == []

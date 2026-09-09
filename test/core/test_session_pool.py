@@ -92,3 +92,67 @@ async def _wait_until(condition, timeout: float = 2.0) -> None:
         if asyncio.get_running_loop().time() > deadline:
             pytest.fail("the condition was never met")
         await asyncio.sleep(0.005)
+
+
+async def test_a_pool_that_never_loaded_reports_no_staleness() -> None:
+    assert build_pool(FakeSessionRepository()).staleness_seconds is None
+
+
+async def test_a_successful_load_resets_the_staleness() -> None:
+    pool = build_pool(FakeSessionRepository([build_session()]))
+
+    await pool.load()
+    staleness = pool.staleness_seconds
+
+    assert staleness is not None
+    assert staleness < 1.0
+
+
+async def test_a_failed_refresh_logs_how_old_the_snapshot_is(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    repository = FakeSessionRepository([build_session()])
+    pool = build_pool(repository)
+    await pool.load()
+    repository.error = RepositoryDatabaseOperationError(message="mongo is down")
+
+    with caplog.at_level("WARNING"):
+        pool.start_refreshing()
+        await _wait_until(lambda: repository.call_count >= 2)
+        await pool.stop_refreshing()
+
+    # Keeping the previous snapshot is right, but it has no time bound without
+    # this: the log line is what says the pool is serving five-hour-old accounts.
+    assert "last success" in caplog.text
+
+
+async def test_a_successful_read_returning_nothing_empties_the_pool_loudly(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    repository = FakeSessionRepository([build_session()])
+    pool = build_pool(repository)
+    await pool.load()
+
+    repository.sessions = []
+    with caplog.at_level("ERROR"):
+        await pool.load()
+
+    # Emptying is the correct outcome — serving a stale snapshot would mean
+    # hammering X with dead tokens — but doing it silently is not.
+    assert pool.sessions == ()
+    assert "empty after a successful read" in caplog.text
+
+
+async def test_starting_the_refresh_twice_leaves_a_single_task() -> None:
+    repository = FakeSessionRepository([build_session()])
+    pool = build_pool(repository)
+
+    pool.start_refreshing()
+    pool.start_refreshing()
+    await pool.stop_refreshing()
+    calls_at_shutdown = repository.call_count
+    await asyncio.sleep(0.05)
+
+    # A second create_task would orphan the first, which would keep refreshing
+    # forever with nobody holding a reference to cancel it.
+    assert repository.call_count == calls_at_shutdown

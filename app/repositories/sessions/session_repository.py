@@ -14,6 +14,12 @@ from app.models.sessions.session import XSessionInDB, XSessionStatus
 
 logger = logging.getLogger(__name__)
 
+# The only session kind this reader understands, and the value it asks Mongo
+# for. It must stay in step with XSessionInDB.kind — a test asserts that it
+# does. Filtering on it is what stops an account of a kind we cannot parse (an
+# OAuth1 pair, once those are sourced) from ever reaching the validation below.
+_READABLE_SESSION_KIND = "cookie"
+
 # An allowlist, not a denylist. The same document also holds the account
 # password, its recovery mailbox, that mailbox's password and the TOTP secret —
 # everything needed to re-mint a session, and none of it needed to read a
@@ -59,6 +65,7 @@ class XSessionRepository:
         """
         now = datetime.now(timezone.utc)
         query = {
+            "kind": _READABLE_SESSION_KIND,
             "status": XSessionStatus.ACTIVE.value,
             "$or": [
                 {"cooldown_until": None},
@@ -81,20 +88,52 @@ class XSessionRepository:
                 detail=str(e),
             ) from e
 
-        try:
-            return [XSessionInDB(**doc) for doc in docs]
-        except ValidationError as e:
-            # Deliberate deviation from the repo's `logger.exception(f"… - {e}")`
-            # convention: a ValidationError carries the offending input, and here
-            # the input is a live session — auth_token and ct0 included. Only the
-            # field-level errors are kept, so a malformed document cannot leak a
-            # credential into the logs (CLAUDE.md §4).
-            sanitized = e.errors(include_input=False, include_url=False)
-            logger.error(
-                f"An X session document does not match the model - {sanitized}"
-            )
+        return self._validate(docs)
+
+    def _validate(self, docs: list[dict]) -> list[XSessionInDB]:
+        """Turn the documents into models, dropping the ones that do not fit.
+
+        Per-document tolerance rather than an all-or-nothing list comprehension:
+        a pool is a bag of interchangeable credentials, and skipping one bad
+        account serves no wrong data to anyone — it just costs one account.
+        Failing the whole batch, on the other hand, would take the API down at
+        boot, because the offending document matches the filter and comes back
+        on every single read. One bad row would make the service undeployable.
+
+        The distinction that matters is isolated versus systematic: if *nothing*
+        validates, the model no longer matches the schema, and that has to be
+        loud rather than silently reported as "no session available".
+        """
+        sessions: list[XSessionInDB] = []
+        rejected = 0
+
+        for doc in docs:
+            try:
+                sessions.append(XSessionInDB(**doc))
+            except ValidationError as e:
+                rejected += 1
+                # Deliberate deviation from the repo's `logger.exception(f"…
+                # - {e}")` convention: a ValidationError carries the offending
+                # input, and here the input is a live session — auth_token and
+                # ct0 included. Only the field-level errors are kept, so a
+                # malformed document cannot leak a credential (CLAUDE.md §4).
+                sanitized = e.errors(include_input=False, include_url=False)
+                logger.error(
+                    f"An X session document does not match the model - {sanitized}"
+                )
+
+        if docs and not sessions:
             raise RepositoryDataCorruptionError(
-                message="An X session document does not match the model",
+                message="No X session document matches the model",
                 operation="list_usable_sessions",
-                detail=str(sanitized),
-            ) from e
+                detail=f"{rejected} document(s) rejected",
+            )
+
+        if rejected:
+            # ERROR and not WARNING on purpose: tolerance is silent by nature,
+            # and a pool quietly shrinking from 3000 to 4 accounts is a worse
+            # failure to diagnose than an outright crash. Until there is a
+            # metric to alert on, this line is the only signal.
+            logger.error(f"Skipped {rejected} invalid X session(s) out of {len(docs)}")
+
+        return sessions

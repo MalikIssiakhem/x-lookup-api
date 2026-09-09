@@ -19,8 +19,6 @@ logging.basicConfig(
     format="%(asctime)s [pid=%(process)d] %(levelname)s %(name)s - %(message)s",
 )
 
-logger = logging.getLogger(__name__)
-
 
 @asynccontextmanager
 async def lifespan(api: FastAPI) -> AsyncIterator[None]:
@@ -37,11 +35,12 @@ async def lifespan(api: FastAPI) -> AsyncIterator[None]:
         ),
         refresh_interval_seconds=settings.X_SESSIONS_POOL_REFRESH_SECONDS,
     )
+    # A failure here propagates on purpose: an unreadable session store at boot
+    # is not something to recover from silently. The pool logs its own size.
     await pool.load()
     if not pool.sessions:
         raise EmptySessionPoolError()
 
-    logger.info(f"Loaded {len(pool.sessions)} usable X session(s) into the pool")
     pool.start_refreshing()
 
     # Only the pool goes on app.state; dependencies read it from there rather
