@@ -5,8 +5,8 @@
 #   docker compose up --build
 #   -> Swagger on http://localhost:8123/docs
 #
-# No mongo/redis service yet: nothing in the app connects to them (they arrive
-# with ticket 3, and they get their services here in the same MR).
+# No redis service yet: nothing in the app connects to it. It arrives with the
+# cache that uses it.
 services:
   api:
     image: x-lookup-api:latest
@@ -14,12 +14,20 @@ services:
     build:
       context: ./
     restart: unless-stopped
-    # Optional: every setting has a default today, so the API boots without a
-    # .env. It becomes required in practice at ticket 3, when the datastore URLs
-    # land with no default and the boot fails fast without them.
+    # Optional: the defaults below make `compose up` work on a fresh clone. A
+    # .env overrides any of them — compose substitutes it here, and passes it to
+    # the container as well.
     env_file:
       - path: .env
         required: false
+    environment:
+      X_SESSIONS_MONGODB_URL: ${X_SESSIONS_MONGODB_URL:-mongodb://mongo:27017}
+      X_SESSIONS_MONGODB_DB_NAME: ${X_SESSIONS_MONGODB_DB_NAME:-x_sessions}
+    depends_on:
+      # Not just "started": the lifespan pings Mongo and refuses to boot without
+      # it, so starting the API before Mongo answers would just crash it.
+      mongo:
+        condition: service_healthy
     # Deliberately not 8080: that is Burp's default proxy port, and a WSL relay
     # already shares it on some dev machines. An unremarkable port here means
     # `compose up` never races the tooling.
@@ -39,3 +47,27 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
+
+  mongo:
+    image: mongo:8
+    container_name: x-lookup-mongo
+    restart: unless-stopped
+    environment:
+      # The database the init script below runs against.
+      MONGO_INITDB_DATABASE: ${X_SESSIONS_MONGODB_DB_NAME:-x_sessions}
+    volumes:
+      # Seeds one obviously fake session so the API can boot. Runs once, on an
+      # empty data dir — after a `compose down -v`, not on every start.
+      - ./docker/mongo-init:/docker-entrypoint-initdb.d:ro
+      - mongo-data:/data/db
+    # No published port and no credentials: this Mongo is reachable only from
+    # the compose network, and it holds nothing but the dev fixture.
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  mongo-data:

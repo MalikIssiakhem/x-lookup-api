@@ -4,6 +4,9 @@
 # in .pre-commit-config.yaml. If they drift, the local hooks and the CI lint job
 # disagree and the CI turns into noise nobody reads (CLAUDE.md §6).
 pytest==9.0.2
+# Runs the `async def` tests — the repository, the pool and the lifespan are all
+# async, so there is no way to exercise them synchronously.
+pytest-asyncio==1.4.0
 pre-commit==4.6.2
 black==26.5.1
 isort==8.0.1
